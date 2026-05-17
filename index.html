@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Kokteiliai">
+  <title>Mano Kokteiliai</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.9.0/dist/tabler-icons.min.css">
+
+  <!-- Firebase -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getFirestore, collection, doc, onSnapshot, setDoc, deleteDoc, serverTimestamp }
+      from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged }
+      from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+    // ── ČIA ĮDĖKITE SAVO FIREBASE KONFIGŪRACIJĄ ──
+    const firebaseConfig = {
+      apiKey:            "AIzaSyB9ev6gVgkXZAcr3ZvmgXfssUpnqkdaiZA",
+      authDomain:        "barmenas-4cebc.firebaseapp.com",
+      projectId:         "barmenas-4cebc",
+      storageBucket:     "barmenas-4cebc.firebasestorage.app",
+      messagingSenderId: "343833899731",
+      appId:             "1:343833899731:web:1855691e8361d778809a26"
+      measurementId: "G-74HLFYFSMM"
+    };
+    // ─────────────────────────────────────────────
+
+    const app  = initializeApp(firebaseConfig);
+    const db   = getFirestore(app);
+    const auth = getAuth(app);
+
+    let uid = null;
+    let cocktailsCol = null;
+
+    onAuthStateChanged(auth, async user => {
+      if (user) {
+        uid = user.uid;
+        cocktailsCol = collection(db, "users", uid, "cocktails");
+        // Real-time listener
+        onSnapshot(cocktailsCol, snap => {
+          const remote = [];
+          snap.forEach(d => remote.push({ id: d.id, ...d.data() }));
+          window.__setRemoteCocktails(remote);
+        });
+        document.getElementById('syncStatus').textContent = '☁️ Sinchronizuojama';
+        document.getElementById('syncStatus').style.color = '#1D9E75';
+      }
+    });
+
+    signInAnonymously(auth).catch(e => {
+      console.warn("Firebase auth error – veikia offline režimu", e);
+      document.getElementById('syncStatus').textContent = '📵 Offline režimas';
+      document.getElementById('syncStatus').style.color = '#aaa';
+    });
+
+    window.__saveCocktail = async (c) => {
+      if (!cocktailsCol) { localSave(c); return; }
+      try {
+        await setDoc(doc(cocktailsCol, String(c.id)), { ...c, updatedAt: serverTimestamp() });
+      } catch(e) { localSave(c); }
+    };
+
+    window.__deleteCocktail = async (id) => {
+      if (!cocktailsCol) return;
+      try { await deleteDoc(doc(cocktailsCol, String(id))); } catch(e) {}
+    };
+
+    function localSave(c) {
+      const saved = JSON.parse(localStorage.getItem('cocktails') || '[]');
+      const idx = saved.findIndex(x => x.id === c.id);
+      if (idx >= 0) saved[idx] = c; else saved.unshift(c);
+      localStorage.setItem('cocktails', JSON.stringify(saved));
+    }
+  </script>
+
+  <style>
+    :root {
+      --bg: #f5f5f7;
+      --card: #ffffff;
+      --border: #e5e5ea;
+      --border2: #d1d1d6;
+      --text: #1c1c1e;
+      --text2: #6c6c70;
+      --green: #1D9E75;
+      --green-light: #E1F5EE;
+      --green-mid: #5DCAA5;
+      --star: #EF9F27;
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1c1c1e;
+        --card: #2c2c2e;
+        --border: #3a3a3c;
+        --border2: #48484a;
+        --text: #f2f2f7;
+        --text2: #8e8e93;
+        --green-light: #0f3326;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .app { max-width: 480px; margin: 0 auto; min-height: 100vh; background: var(--bg); position: relative; }
+
+    /* HEADER */
+    .header { background: var(--card); border-bottom: 0.5px solid var(--border); padding: 14px 16px 10px; position: sticky; top: 0; z-index: 10; }
+    .header-top { display: flex; align-items: center; justify-content: space-between; }
+    .header h1 { font-size: 20px; font-weight: 600; color: var(--text); }
+    #syncStatus { font-size: 11px; color: var(--text2); }
+
+    /* SEARCH PANEL */
+    .search-panel { background: var(--card); border-bottom: 0.5px solid var(--border); padding: 10px 16px; display: flex; flex-direction: column; gap: 8px; }
+    .sw { position: relative; }
+    .sw i { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text2); font-size: 16px; }
+    .sw input { width: 100%; padding: 8px 12px 8px 34px; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); font-size: 14px; background: var(--bg); color: var(--text); }
+    .filter-btn { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); background: var(--bg); cursor: pointer; font-size: 13px; color: var(--text2); }
+    .filter-btn.active { border-color: var(--green); color: var(--green); background: var(--green-light); }
+    .filter-btn-left { display: flex; align-items: center; gap: 7px; }
+    .fbadge { background: var(--green); color: #fff; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 99px; display: none; }
+
+    /* FILTER PANEL */
+    .filter-panel { display: none; background: var(--card); border-bottom: 0.5px solid var(--border); }
+    .filter-panel.open { display: block; }
+    .fp-inner { padding: 12px 16px 14px; }
+    .fp-sw { position: relative; margin-bottom: 8px; }
+    .fp-sw i { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--text2); font-size: 14px; }
+    .fp-sw input { width: 100%; padding: 7px 10px 7px 30px; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); font-size: 13px; background: var(--bg); color: var(--text); }
+    .fp-cats { display: flex; gap: 5px; overflow-x: auto; margin-bottom: 8px; }
+    .fp-cats::-webkit-scrollbar { display: none; }
+    .fp-cat { padding: 4px 11px; border-radius: 99px; font-size: 12px; border: 0.5px solid var(--border2); background: var(--bg); color: var(--text2); cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+    .fp-cat.active { background: var(--text); color: var(--card); border-color: var(--text); }
+    .fp-chips { display: flex; flex-wrap: wrap; gap: 5px; max-height: 130px; overflow-y: auto; margin-bottom: 10px; }
+    .fp-chip { padding: 4px 11px; border-radius: 99px; font-size: 12px; border: 0.5px solid var(--border2); background: var(--bg); color: var(--text2); cursor: pointer; }
+    .fp-chip.sel { background: var(--green-light); color: var(--green); border-color: var(--green-mid); }
+    .fp-sel-row { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+    .fp-sel-tag { display: flex; align-items: center; gap: 5px; padding: 4px 10px 4px 12px; background: var(--green); color: #fff; border-radius: 99px; font-size: 12px; }
+    .fp-sel-tag button { background: none; border: none; cursor: pointer; color: rgba(255,255,255,0.8); font-size: 14px; }
+    .fp-actions { display: flex; gap: 8px; }
+    .fp-clear { flex: 1; padding: 9px; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); background: none; color: var(--text2); font-size: 13px; cursor: pointer; }
+    .fp-apply { flex: 2; padding: 9px; border: none; border-radius: var(--radius-sm); background: var(--text); color: var(--card); font-size: 13px; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; }
+
+    .results-lbl { padding: 8px 16px 0; font-size: 12px; color: var(--text2); display: none; }
+    .results-lbl.show { display: block; }
+
+    /* LIST */
+    .list { padding: 10px 16px 90px; display: flex; flex-direction: column; gap: 10px; }
+    .empty { text-align: center; color: var(--text2); font-size: 14px; padding: 40px 0; }
+
+    /* CARD */
+    .card { background: var(--card); border: 0.5px solid var(--border); border-radius: var(--radius); overflow: hidden; cursor: pointer; transition: border-color .15s; }
+    .card:hover { border-color: var(--border2); }
+    .card.match { border-color: var(--green-mid); }
+    .card-row { display: flex; align-items: center; }
+    .card-photo { width: 74px; height: 74px; object-fit: cover; flex-shrink: 0; }
+    .card-photo-ph { width: 74px; height: 74px; flex-shrink: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; color: var(--text2); font-size: 20px; }
+    .card-info { flex: 1; min-width: 0; padding: 11px 10px 11px 14px; }
+    .card-name { font-size: 15px; font-weight: 500; color: var(--text); }
+    .card-meta { font-size: 12px; color: var(--text2); margin-top: 2px; }
+    .card-stars { display: flex; align-items: center; gap: 3px; margin-top: 3px; }
+    .card-match-info { font-size: 11px; color: var(--green); margin-top: 3px; font-weight: 500; }
+    .card-chevron { color: var(--text2); font-size: 17px; margin-right: 12px; }
+
+    /* FAB */
+    .fab { position: fixed; bottom: 24px; right: 50%; transform: translateX(calc(50% + 192px)); width: 54px; height: 54px; border-radius: 50%; background: var(--text); color: var(--card); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 24px; z-index: 15; box-shadow: 0 4px 16px rgba(0,0,0,.2); }
+    @media (max-width: 480px) { .fab { right: 20px; transform: none; } }
+
+    /* DETAIL */
+    .detail { display: none; position: fixed; inset: 0; background: var(--bg); z-index: 20; overflow-y: auto; max-width: 480px; margin: 0 auto; }
+    .detail.open { display: block; }
+    .detail-topbar { background: var(--card); border-bottom: 0.5px solid var(--border); padding: 12px 16px; display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 5; }
+    .back { background: none; border: none; cursor: pointer; color: var(--text2); font-size: 20px; display: flex; padding: 4px; border-radius: var(--radius-sm); }
+    .detail-topbar-title { font-size: 15px; font-weight: 500; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .edit-btn { background: none; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); padding: 5px 12px; font-size: 13px; color: var(--text2); cursor: pointer; display: flex; align-items: center; gap: 5px; }
+    .delete-btn { background: none; border: 0.5px solid #ff3b30; border-radius: var(--radius-sm); padding: 5px 10px; font-size: 13px; color: #ff3b30; cursor: pointer; display: flex; align-items: center; }
+
+    .photo-hero { width: 100%; height: 230px; position: relative; background: var(--bg); overflow: hidden; }
+    .photo-hero img { width: 100%; height: 100%; object-fit: cover; }
+    .photo-hero-ph { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--text2); font-size: 56px; }
+    .photo-overlay { position: absolute; bottom: 0; left: 0; right: 0; padding: 50px 16px 14px; background: linear-gradient(transparent, rgba(0,0,0,.6)); }
+    .photo-name { color: #fff; font-size: 22px; font-weight: 600; }
+    .photo-meta { color: rgba(255,255,255,.8); font-size: 13px; margin-top: 2px; }
+    .photo-stars { display: flex; align-items: center; gap: 3px; margin-top: 4px; }
+
+    .tabs { display: flex; background: var(--card); border-bottom: 0.5px solid var(--border); position: sticky; top: 49px; z-index: 4; overflow-x: auto; }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab { flex: 1; min-width: 54px; padding: 9px 2px; font-size: 10px; color: var(--text2); border: none; background: none; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -0.5px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .tab i { font-size: 15px; }
+    .tab.active { color: var(--text); border-bottom-color: var(--text); }
+    .tab-pane { display: none; padding: 14px 16px 24px; }
+    .tab-pane.active { display: block; }
+
+    .sec-label { font-size: 11px; font-weight: 600; color: var(--text2); letter-spacing: .5px; text-transform: uppercase; margin-bottom: 8px; }
+    .ing-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; background: var(--card); border: 0.5px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 6px; }
+    .ing-row.hl { border-color: var(--green-mid); background: var(--green-light); }
+    .ing-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+    .ing-name-t { flex: 1; font-size: 14px; color: var(--text); }
+    .ing-amt { font-size: 13px; color: var(--text2); font-weight: 500; }
+    .glass-box { background: var(--card); border: 0.5px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 14px; color: var(--text); }
+    .step-row-d { display: flex; gap: 12px; margin-bottom: 12px; }
+    .step-n { width: 26px; height: 26px; border-radius: 50%; background: var(--text); color: var(--card); font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+    .step-txt { font-size: 14px; color: var(--text); line-height: 1.6; padding-top: 3px; }
+    .step-tip { font-size: 12px; color: var(--text2); margin-top: 3px; font-style: italic; }
+    .video-ph { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius); aspect-ratio: 16/9; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--text2); margin-bottom: 12px; }
+    .url-box { background: var(--card); border: 0.5px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; }
+    .url-box label { font-size: 12px; color: var(--text2); display: block; margin-bottom: 5px; }
+    .url-box input { width: 100%; font-size: 13px; border: none; background: none; color: var(--text); outline: none; }
+    .rating-box { background: var(--card); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 18px; text-align: center; margin-bottom: 12px; }
+    .big-r { font-size: 44px; font-weight: 600; color: var(--text); line-height: 1; }
+    .stars-r { display: flex; justify-content: center; gap: 4px; margin: 6px 0; }
+    .s-big { font-size: 24px; cursor: pointer; }
+    .taste-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    .t-chip { padding: 5px 12px; border-radius: 99px; font-size: 13px; border: 0.5px solid var(--border2); background: var(--card); color: var(--text2); cursor: pointer; }
+    .t-chip.on { background: var(--text); color: var(--card); border-color: var(--text); }
+    textarea.notes { width: 100%; padding: 10px 12px; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); font-size: 14px; font-family: inherit; background: var(--card); color: var(--text); resize: none; height: 90px; }
+    .save-btn { width: 100%; padding: 12px; background: var(--text); color: var(--card); border: none; border-radius: var(--radius-sm); font-size: 15px; font-weight: 500; cursor: pointer; margin-top: 10px; }
+    .photo-tab-img { width: 100%; border-radius: var(--radius); object-fit: cover; max-height: 320px; display: block; }
+    .photo-tab-ph { width: 100%; height: 200px; border-radius: var(--radius); background: var(--bg); border: 0.5px dashed var(--border2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--text2); margin-bottom: 12px; }
+
+    /* WIZARD */
+    .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 50; align-items: flex-end; justify-content: center; }
+    .overlay.open { display: flex; }
+    .sheet { background: var(--card); border-radius: 16px 16px 0 0; width: 100%; max-width: 480px; max-height: 92vh; overflow-y: auto; padding-bottom: 8px; }
+    .sheet-header { padding: 14px 16px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 0.5px solid var(--border); position: sticky; top: 0; background: var(--card); z-index: 2; }
+    .sheet-header h2 { font-size: 16px; font-weight: 600; color: var(--text); }
+    .sheet-close { background: none; border: none; cursor: pointer; color: var(--text2); font-size: 20px; display: flex; }
+    .prog { display: flex; gap: 6px; padding: 12px 16px 0; }
+    .prog-dot { flex: 1; height: 3px; border-radius: 99px; background: var(--border); }
+    .prog-dot.done { background: var(--text); }
+    .wiz-pane { display: none; padding: 14px 16px; }
+    .wiz-pane.active { display: block; }
+    .wiz-label { font-size: 12px; color: var(--text2); display: block; margin-bottom: 5px; margin-top: 12px; }
+    .wiz-label:first-child { margin-top: 0; }
+    .wiz-inp { width: 100%; padding: 9px 12px; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); font-size: 14px; background: var(--bg); color: var(--text); }
+    .wiz-sel { width: 100%; padding: 9px 12px; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); font-size: 14px; background: var(--bg); color: var(--text); }
+    .ph-prev-img { width: 100%; height: 150px; object-fit: cover; border-radius: var(--radius-sm); display: none; margin-bottom: 8px; }
+    .ph-prev-img.vis { display: block; }
+    .ph-prev-ph { width: 100%; height: 100px; border-radius: var(--radius-sm); background: var(--bg); border: 0.5px dashed var(--border2); display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--text2); font-size: 13px; margin-bottom: 8px; }
+
+    /* Ingredient picker */
+    .ing-picker { border: 0.5px solid var(--border2); border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 10px; }
+    .ing-sr { display: flex; align-items: center; padding: 8px 10px; gap: 8px; border-bottom: 0.5px solid var(--border); }
+    .ing-sr i { color: var(--text2); font-size: 15px; flex-shrink: 0; }
+    .ing-sr input { flex: 1; border: none; background: none; font-size: 14px; color: var(--text); outline: none; }
+    .ing-cats { display: flex; gap: 6px; padding: 8px 10px; overflow-x: auto; border-bottom: 0.5px solid var(--border); }
+    .ing-cats::-webkit-scrollbar { display: none; }
+    .i-cat { padding: 4px 12px; border-radius: 99px; font-size: 12px; border: 0.5px solid var(--border2); background: var(--bg); color: var(--text2); cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+    .i-cat.on { background: var(--text); color: var(--card); border-color: var(--text); }
+    .ing-grid-w { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px; max-height: 170px; overflow-y: auto; }
+    .i-chip { padding: 5px 12px; border-radius: 99px; font-size: 13px; border: 0.5px solid var(--border2); background: var(--card); color: var(--text2); cursor: pointer; white-space: nowrap; }
+    .i-chip.on { background: var(--green-light); color: var(--green); border-color: var(--green-mid); }
+    .ing-custom { display: flex; gap: 6px; padding: 8px 10px; border-top: 0.5px solid var(--border); }
+    .ing-custom input { flex: 1; padding: 7px 10px; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); font-size: 13px; background: var(--bg); color: var(--text); }
+    .ing-custom button { padding: 7px 12px; border: none; background: var(--text); color: var(--card); border-radius: var(--radius-sm); font-size: 13px; cursor: pointer; }
+    .sel-ing { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+    .sel-ing-row { display: flex; align-items: center; gap: 8px; background: var(--bg); border-radius: var(--radius-sm); padding: 7px 10px; }
+    .sel-ing-name { flex: 1; font-size: 14px; color: var(--text); }
+    .sel-ing-amt { width: 90px; padding: 4px 8px; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); font-size: 13px; background: var(--card); color: var(--text); }
+    .sel-ing-rm { background: none; border: none; cursor: pointer; color: var(--text2); font-size: 16px; display: flex; }
+
+    .step-row-w { display: flex; gap: 8px; margin-bottom: 8px; }
+    .step-badge { width: 24px; height: 24px; border-radius: 50%; background: var(--bg); border: 0.5px solid var(--border); color: var(--text2); font-size: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 8px; }
+    .step-inputs-w { flex: 1; }
+    .step-inputs-w input { width: 100%; padding: 8px 10px; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); font-size: 14px; background: var(--bg); color: var(--text); margin-bottom: 4px; }
+    .add-row { width: 100%; padding: 8px; border: 0.5px dashed var(--border2); border-radius: var(--radius-sm); background: none; color: var(--text2); font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 4px; }
+    .wiz-nav { display: flex; gap: 8px; padding: 10px 16px 16px; }
+    .wiz-back-btn { flex: 1; padding: 10px; background: none; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); font-size: 14px; cursor: pointer; color: var(--text2); }
+    .wiz-next-btn { flex: 2; padding: 10px; background: var(--text); color: var(--card); border: none; border-radius: var(--radius-sm); font-size: 14px; font-weight: 500; cursor: pointer; }
+
+    /* Toast */
+    .toast { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--card); padding: 10px 20px; border-radius: 99px; font-size: 13px; z-index: 999; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .2s; }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="header-top">
+      <h1>🍹 Mano kokteiliai</h1>
+      <span id="syncStatus" style="font-size:11px;color:#aaa">Jungiamasi...</span>
+    </div>
+  </div>
+
+  <div class="search-panel">
+    <div class="sw">
+      <i class="ti ti-search"></i>
+      <input type="text" placeholder="Ieškoti pagal pavadinimą..." id="nameSearch" oninput="onNameSearch()">
+    </div>
+    <button class="filter-btn" id="filterBtn" onclick="toggleFP()">
+      <div class="filter-btn-left"><i class="ti ti-filter"></i><span>Filtruoti pagal ingredientus</span></div>
+      <span class="fbadge" id="fbadge"></span>
+    </button>
+  </div>
+
+  <!-- Ingredient filter panel -->
+  <div class="filter-panel" id="filterPanel">
+    <div class="fp-inner">
+      <div class="fp-sw"><i class="ti ti-search"></i><input type="text" id="fpSearch" placeholder="Ieškoti ingrediento..." oninput="fpRenderChips()"></div>
+      <div class="fp-cats" id="fpCats"></div>
+      <div class="fp-chips" id="fpChips"></div>
+      <div class="fp-sel-row" id="fpSelRow"></div>
+      <div class="fp-actions">
+        <button class="fp-clear" onclick="fpClear()">Išvalyti</button>
+        <button class="fp-apply" onclick="fpApply()"><i class="ti ti-search"></i>Ieškoti kokteilių</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="results-lbl" id="resultsLbl"></div>
+  <div class="list" id="list"></div>
+
+  <button class="fab" onclick="openWiz(null)" aria-label="Pridėti"><i class="ti ti-plus"></i></button>
+
+  <!-- DETAIL -->
+  <div class="detail" id="detail">
+    <div class="detail-topbar">
+      <button class="back" onclick="closeDetail()"><i class="ti ti-arrow-left"></i></button>
+      <span class="detail-topbar-title" id="dTitle"></span>
+      <button class="edit-btn" onclick="editCurrent()"><i class="ti ti-edit" style="font-size:14px"></i> Redaguoti</button>
+      <button class="delete-btn" onclick="deleteCurrent()" title="Ištrinti"><i class="ti ti-trash" style="font-size:15px"></i></button>
+    </div>
+    <div class="photo-hero" id="dPhotoHero">
+      <div class="photo-hero-ph" id="dPhotoPh"><i class="ti ti-glass"></i></div>
+      <div class="photo-overlay">
+        <div class="photo-name" id="dName"></div>
+        <div class="photo-meta" id="dMeta"></div>
+        <div class="photo-stars" id="dStars"></div>
+      </div>
+    </div>
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('photo',this)"><i class="ti ti-camera"></i>Nuotrauka</button>
+      <button class="tab" onclick="showTab('ings',this)"><i class="ti ti-list"></i>Ingredientai</button>
+      <button class="tab" onclick="showTab('steps',this)"><i class="ti ti-chef-hat"></i>Gaminimas</button>
+      <button class="tab" onclick="showTab('video',this)"><i class="ti ti-player-play"></i>Vaizdo</button>
+      <button class="tab" onclick="showTab('review',this)"><i class="ti ti-star"></i>Vertinimas</button>
+    </div>
+    <div class="tab-pane active" id="tp-photo">
+      <div id="photoTabImg"></div>
+      <div class="url-box" style="margin-top:12px"><label>Nuotraukos URL</label><input type="text" id="photoUrlInp" placeholder="https://..." oninput="updatePhoto()"></div>
+    </div>
+    <div class="tab-pane" id="tp-ings">
+      <p class="sec-label">Ingredientai</p>
+      <div id="dIngList"></div>
+      <div class="glass-box"><i class="ti ti-glass" style="color:var(--text2);font-size:18px"></i><span id="dGlass"></span></div>
+    </div>
+    <div class="tab-pane" id="tp-steps"><p class="sec-label">Žingsniai</p><div id="dSteps"></div></div>
+    <div class="tab-pane" id="tp-video">
+      <div class="video-ph" id="videoEmbed"><i class="ti ti-player-play" style="font-size:36px"></i><p style="font-size:13px">Nėra vaizdo klipo</p></div>
+      <div class="url-box"><label>YouTube nuoroda</label><input type="text" id="videoInp" placeholder="https://youtube.com/..." oninput="updateVideo()"></div>
+    </div>
+    <div class="tab-pane" id="tp-review">
+      <div class="rating-box">
+        <div class="big-r" id="bigR">–</div>
+        <div class="stars-r" id="starsR"></div>
+        <div style="font-size:12px;color:var(--text2)" id="rCount">Dar neįvertintas</div>
+      </div>
+      <p class="sec-label" style="margin-bottom:8px">Skonis</p>
+      <div class="taste-row" id="tasteRow"></div>
+      <p class="sec-label" style="margin-bottom:8px">Pastabos</p>
+      <textarea class="notes" id="notesTA" placeholder="Kaip patiko?"></textarea>
+      <button class="save-btn" onclick="saveReview()">Išsaugoti vertinimą</button>
+    </div>
+  </div>
+
+  <!-- WIZARD -->
+  <div class="overlay" id="wizOverlay">
+    <div class="sheet">
+      <div class="sheet-header">
+        <h2 id="wizTitle">Naujas kokteilis</h2>
+        <button class="sheet-close" onclick="closeWiz()"><i class="ti ti-x"></i></button>
+      </div>
+      <div class="prog" id="prog"></div>
+      <!-- Step 1 -->
+      <div class="wiz-pane active" id="wp1">
+        <label class="wiz-label">Pavadinimas</label>
+        <input class="wiz-inp" type="text" id="wName" placeholder="pvz. Mojito">
+        <label class="wiz-label">Kategorija</label>
+        <select class="wiz-sel" id="wCat"><option>Klasikinis</option><option>Tropinis</option><option>Saldus</option><option>Kartus</option><option>Nealkohoinis</option><option>Kremingas</option><option>Egzotiškas</option></select>
+        <label class="wiz-label">Taurė</label>
+        <select class="wiz-sel" id="wGlass"><option>Highball taurė</option><option>Martini taurė</option><option>Rocks taurė</option><option>Kupė taurė</option><option>Viskio taurė</option><option>Vyno taurė</option><option>Bokalas</option></select>
+        <label class="wiz-label">Nuotraukos URL</label>
+        <img id="wPhPrev" class="ph-prev-img" src="" alt="">
+        <div class="ph-prev-ph" id="wPhPh"><i class="ti ti-photo" style="font-size:22px"></i><span>Įveskite URL žemiau</span></div>
+        <input class="wiz-inp" type="text" id="wPhoto" placeholder="https://images.unsplash.com/..." oninput="prevPhoto()">
+      </div>
+      <!-- Step 2 -->
+      <div class="wiz-pane" id="wp2">
+        <p class="sec-label" style="margin-top:0;margin-bottom:10px">Pasirinkite ingredientus</p>
+        <div class="ing-picker">
+          <div class="ing-sr"><i class="ti ti-search"></i><input type="text" id="ingS" placeholder="Ieškoti..." oninput="renderIngChips()"></div>
+          <div class="ing-cats" id="ingCats"></div>
+          <div class="ing-grid-w" id="ingGrid"></div>
+          <div class="ing-custom">
+            <input type="text" id="ingCustom" placeholder="Įrašyti savo ingredientą...">
+            <button onclick="addCustom()"><i class="ti ti-plus"></i></button>
+          </div>
+        </div>
+        <p class="sec-label" style="margin-bottom:6px">Pasirinkti ingredientai</p>
+        <div class="sel-ing" id="selIng"></div>
+        <p style="font-size:12px;color:var(--text2);margin-top:6px">Įveskite kiekį prie kiekvieno ingrediento</p>
+      </div>
+      <!-- Step 3 -->
+      <div class="wiz-pane" id="wp3">
+        <p class="sec-label" style="margin-top:0">Gaminimo žingsniai</p>
+        <div id="stepWiz"></div>
+        <button class="add-row" onclick="addStep()"><i class="ti ti-plus"></i> Pridėti žingsnį</button>
+      </div>
+      <!-- Step 4 -->
+      <div class="wiz-pane" id="wp4">
+        <label class="wiz-label">Vaizdo klipo nuoroda (nebūtina)</label>
+        <input class="wiz-inp" type="text" id="wVideo" placeholder="https://youtube.com/watch?v=...">
+        <label class="wiz-label" style="margin-top:14px">Skonio žymos</label>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px" id="wTastes"></div>
+        <label class="wiz-label" style="margin-top:14px">Pradinis vertinimas</label>
+        <div style="display:flex;gap:6px;margin-top:4px" id="wStars"></div>
+      </div>
+      <div class="wiz-nav">
+        <button class="wiz-back-btn" id="wBackBtn" onclick="wBack()" style="display:none">Atgal</button>
+        <button class="wiz-next-btn" id="wNextBtn" onclick="wNext()">Toliau →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── DATA ──
+const TASTES = ['Saldus','Rūgštus','Kartus','Gaivus','Kreminis','Stiprus','Lengvas','Vaisinis','Herbinis','Dūminis'];
+const ING_DB = {
+  'Alkoholis':['Degtinė','Džinas','Romas baltas','Romas tamsus','Tekila','Mezcal','Viskis','Burbonas','Škotiškas viskis','Brendis','Konjakas','Absentas','Grappa','Rye whiskey'],
+  'Likeriai':['Kavos likeris (Kahlúa)','Vyšnių likeris','Aperolis','Campari','Cointreau','Triple Sec','Amaretto','Frangelico','Baileys','Midori','Passoa','Limoncello','Chartreuse','Peach Schnapps','Malibu','Sambuca','Jägermeister','St-Germain','Lychee likeris','Disaronno'],
+  'Vynas':['Prosecco','Šampanas','Cava','Baltas vynas','Raudonas vynas','Rozė','Vermoutas sausas','Vermoutas saldus','Portveinas','Sheris'],
+  'Alus':['Alus šviesus','Alus tamsus','Ingverinis alus','Sidras'],
+  'Sultys':['Citrinų sultys','Laimo sultys','Apelsinų sultys','Greipfrutų sultys','Ananasų sultys','Spanguolių sultys','Pomidorų sultys','Mango tyrė','Braškių tyrė','Pasiflorų tyrė','Persikų tyrė'],
+  'Gazuoti':['Gazuotas vanduo','Tonic water','Club soda','Cola','Sprite / 7UP','Ingverinis giras','Greipfrutų sodas'],
+  'Sirupai':['Cukraus sirupas','Medus','Agavos sirupas','Grenadinas','Orgeat','Laimo sirupas','Vanilės sirupas','Lavandų sirupas','Rožių sirupas','Passion fruit sirupas'],
+  'Pienas':['Pienas','Grietinėlė','Kokosų kremas','Kokosų pienas','Grietinėlė plakimui'],
+  'Kiti':['Espresso','Kava','Ledas','Mėtos lapeliai','Agurkų skiltelės','Druskos mišinys','Worcestershire padažas','Tabasco','Citrinos žievelė','Laimo žievelė','Muskatmedis','Cinamonas','Kiaušinio baltymas','Greipfrutų žievelė'],
+};
+const ALL_CATS = ['Visi', ...Object.keys(ING_DB)];
+
+let cocktails = [];
+let currentId = null, curRating = 0;
+let wizStep = 1, wizRating = 0, wizTastes = [], wizPhoto = '', wizIngs = [], wizCat = 'Visi', editingId = null;
+let fpOpen = false, fpCat = 'Visi', fpSel = [], activeFilter = [];
+
+// ── FIREBASE BRIDGE ──
+window.__setRemoteCocktails = (remote) => {
+  cocktails = remote;
+  renderList(cocktails);
+};
+
+// Fallback: load from localStorage if offline
+if (!cocktails.length) {
+  const local = JSON.parse(localStorage.getItem('cocktails') || '[]');
+  if (local.length) { cocktails = local; renderList(cocktails); }
+}
+
+// ── HELPERS ──
+function stars(r, size=12) {
+  return [1,2,3,4,5].map(n=>`<span style="color:${n<=Math.round(r)?'var(--star)':'var(--border2)'};font-size:${size}px">★</span>`).join('');
+}
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+async function persist(c) {
+  // local
+  const local = JSON.parse(localStorage.getItem('cocktails') || '[]');
+  const idx = local.findIndex(x => x.id === c.id);
+  if (idx >= 0) local[idx] = c; else local.unshift(c);
+  localStorage.setItem('cocktails', JSON.stringify(local));
+  // remote
+  if (window.__saveCocktail) await window.__saveCocktail(c);
+}
+async function remove(id) {
+  cocktails = cocktails.filter(x => x.id !== id);
+  const local = JSON.parse(localStorage.getItem('cocktails') || '[]');
+  localStorage.setItem('cocktails', JSON.stringify(local.filter(x => x.id !== id)));
+  if (window.__deleteCocktail) await window.__deleteCocktail(id);
+}
+
+// ── RENDER LIST ──
+function renderList(list, fNames) {
+  const el = document.getElementById('list');
+  if (!list.length) { el.innerHTML = '<p class="empty">Nėra kokteilių</p>'; return; }
+  el.innerHTML = list.map(c => {
+    let mi = '';
+    let hl = '';
+    if (fNames && fNames.length) {
+      const cn = c.ingredients.map(i => i.name.toLowerCase());
+      const m = fNames.filter(f => cn.some(n => n.includes(f.toLowerCase())));
+      mi = `<div class="card-match-info">✓ ${m.length}/${fNames.length} ingredientų</div>`;
+      hl = 'match';
+    }
+    return `<div class="card ${hl}" onclick="openDetail('${c.id}')">
+      <div class="card-row">
+        ${c.photoUrl ? `<img class="card-photo" src="${c.photoUrl}" alt="${c.name}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` : ''}
+        <div class="card-photo-ph" style="${c.photoUrl ? 'display:none' : ''}"><i class="ti ti-camera"></i></div>
+        <div class="card-info">
+          <div class="card-name">${c.name}</div>
+          <div class="card-meta">${c.category} · ${c.glass}</div>
+          <div class="card-stars">${c.reviewed ? `${stars(c.rating,12)}<span style="font-size:12px;color:var(--text2);margin-left:3px">${c.rating.toFixed(1)}</span>` : '<span style="font-size:12px;color:var(--text2)">Neįvertintas</span>'}</div>
+          ${mi}
+        </div>
+        <i class="ti ti-chevron-right card-chevron"></i>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function onNameSearch() {
+  const q = document.getElementById('nameSearch').value.toLowerCase();
+  document.getElementById('resultsLbl').classList.remove('show');
+  renderList(cocktails.filter(c => c.name.toLowerCase().includes(q) || c.category.toLowerCase().includes(q)));
+}
+
+// ── FILTER PANEL ──
+function toggleFP() {
+  fpOpen = !fpOpen;
+  document.getElementById('filterPanel').classList.toggle('open', fpOpen);
+  if (fpOpen) { fpBuildCats(); fpRenderChips(); }
+}
+function fpBuildCats() {
+  document.getElementById('fpCats').innerHTML = ALL_CATS.map(c => `<span class="fp-cat ${c === fpCat ? 'on' : ''}" onclick="fpSetCat('${c}')">${c}</span>`).join('');
+}
+function fpSetCat(cat) { fpCat = cat; fpBuildCats(); fpRenderChips(); }
+function fpRenderChips() {
+  const q = (document.getElementById('fpSearch').value || '').toLowerCase();
+  const all = []; Object.entries(ING_DB).forEach(([cat, items]) => items.forEach(i => all.push({ name: i, cat })));
+  const f = all.filter(i => (fpCat === 'Visi' || i.cat === fpCat) && (!q || i.name.toLowerCase().includes(q)));
+  document.getElementById('fpChips').innerHTML = f.map(i => `<span class="fp-chip ${fpSel.includes(i.name) ? 'sel' : ''}" onclick="fpToggle('${i.name.replace(/'/g, "\\'")}')">${i.name}</span>`).join('');
+  fpRenderSel();
+}
+function fpToggle(name) { fpSel.includes(name) ? fpSel.splice(fpSel.indexOf(name), 1) : fpSel.push(name); fpRenderChips(); updateFbadge(); }
+function fpRenderSel() {
+  document.getElementById('fpSelRow').innerHTML = fpSel.map(n => `<span class="fp-sel-tag">${n}<button onclick="fpRm('${n.replace(/'/g, "\\'")}')">×</button></span>`).join('');
+}
+function fpRm(n) { fpSel = fpSel.filter(x => x !== n); fpRenderChips(); updateFbadge(); }
+function updateFbadge() {
+  const b = document.getElementById('fbadge'); const btn = document.getElementById('filterBtn');
+  if (fpSel.length) { b.textContent = fpSel.length; b.style.display = 'inline'; btn.classList.add('active'); }
+  else { b.style.display = 'none'; btn.classList.remove('active'); }
+}
+function fpClear() {
+  fpSel = []; activeFilter = []; fpRenderChips(); updateFbadge();
+  document.getElementById('resultsLbl').classList.remove('show'); renderList(cocktails);
+}
+function fpApply() {
+  if (!fpSel.length) { fpClear(); return; }
+  activeFilter = [...fpSel];
+  const res = cocktails.filter(c => activeFilter.some(f => c.ingredients.some(i => i.name.toLowerCase().includes(f.toLowerCase()))));
+  res.sort((a, b) => {
+    const am = activeFilter.filter(f => a.ingredients.some(i => i.name.toLowerCase().includes(f.toLowerCase()))).length;
+    const bm = activeFilter.filter(f => b.ingredients.some(i => i.name.toLowerCase().includes(f.toLowerCase()))).length;
+    return bm - am;
+  });
+  const lbl = document.getElementById('resultsLbl');
+  lbl.textContent = res.length ? `${res.length} kokteilis(-iai) rasti` : 'Nerasta kokteilių';
+  lbl.classList.add('show');
+  renderList(res, activeFilter);
+  fpOpen = false; document.getElementById('filterPanel').classList.remove('open');
+}
+
+// ── DETAIL ──
+function openDetail(id) {
+  currentId = id; const c = cocktails.find(x => x.id == id);
+  if (!c) return;
+  const dv = document.getElementById('detail'); dv.classList.add('open'); dv.scrollTop = 0;
+  document.getElementById('dTitle').textContent = c.name;
+  document.getElementById('dName').textContent = c.name;
+  document.getElementById('dMeta').textContent = `${c.category} · ${c.glass}`;
+  document.getElementById('dStars').innerHTML = c.reviewed ? `${stars(c.rating,14)}<span style="color:rgba(255,255,255,.85);font-size:12px;margin-left:4px">${c.rating.toFixed(1)}</span>` : '';
+  const hero = document.getElementById('dPhotoHero'); const ex = hero.querySelector('img'); if (ex) ex.remove();
+  if (c.photoUrl) { const img = document.createElement('img'); img.src = c.photoUrl; img.alt = c.name; img.onerror = () => img.remove(); hero.insertBefore(img, hero.firstChild); }
+  const ml = activeFilter.map(f => f.toLowerCase());
+  document.getElementById('dIngList').innerHTML = (c.ingredients || []).map(i => `<div class="ing-row ${ml.some(f=>i.name.toLowerCase().includes(f)) ? 'hl' : ''}"><div class="ing-dot"></div><span class="ing-name-t">${i.name}</span><span class="ing-amt">${i.amount}</span></div>`).join('');
+  document.getElementById('dGlass').textContent = `Taurė: ${c.glass}`;
+  document.getElementById('dSteps').innerHTML = (c.steps || []).map((s, i) => `<div class="step-row-d"><div class="step-n">${i+1}</div><div><div class="step-txt">${s.text}</div>${s.tip ? `<div class="step-tip">💡 ${s.tip}</div>` : ''}</div></div>`).join('');
+  document.getElementById('videoInp').value = c.videoUrl || ''; renderVideo(c.videoUrl);
+  document.getElementById('photoUrlInp').value = c.photoUrl || ''; renderPhotoTab(c.photoUrl);
+  curRating = c.rating || 0; renderStars(curRating);
+  document.getElementById('bigR').textContent = c.reviewed ? c.rating.toFixed(1) : '–';
+  document.getElementById('rCount').textContent = c.reviewed ? 'Vertinimas' : 'Dar neįvertintas';
+  renderTasteChips(c.tasteTags || []);
+  document.getElementById('notesTA').value = c.notes || '';
+  showTab('photo', document.querySelector('.tabs .tab'));
+}
+function closeDetail() { document.getElementById('detail').classList.remove('open'); }
+function editCurrent() { openWiz(currentId); }
+async function deleteCurrent() {
+  if (!confirm('Ištrinti šį kokteilį?')) return;
+  await remove(currentId);
+  closeDetail(); renderList(cocktails); showToast('🗑 Ištrintas');
+}
+function showTab(name, btn) {
+  document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active'); document.getElementById('tp-' + name).classList.add('active');
+}
+function renderPhotoTab(url) {
+  document.getElementById('photoTabImg').innerHTML = url ? `<img class="photo-tab-img" src="${url}" alt="" onerror="this.outerHTML='<div class=\\'photo-tab-ph\\'><i class=\\'ti ti-photo\\' style=\\'font-size:32px\\'></i><span>Nerasta</span></div>'">` : '<div class="photo-tab-ph"><i class="ti ti-photo" style="font-size:32px"></i><span>Nėra nuotraukos</span></div>';
+}
+async function updatePhoto() {
+  const url = document.getElementById('photoUrlInp').value.trim();
+  const c = cocktails.find(x => x.id == currentId); if (!c) return;
+  c.photoUrl = url; await persist(c); renderList(cocktails); renderPhotoTab(url);
+  const hero = document.getElementById('dPhotoHero'); const ex = hero.querySelector('img'); if (ex) ex.remove();
+  if (url) { const img = document.createElement('img'); img.src = url; img.alt = ''; img.onerror = () => img.remove(); hero.insertBefore(img, hero.firstChild); }
+}
+function renderVideo(url) {
+  const el = document.getElementById('videoEmbed');
+  if (!url) { el.innerHTML = '<i class="ti ti-player-play" style="font-size:36px"></i><p style="font-size:13px">Nėra vaizdo klipo</p>'; return; }
+  const m = url.match(/(?:v=|youtu\.be\/)([^&\s]+)/);
+  if (m) el.innerHTML = `<iframe width="100%" height="100%" src="https://www.youtube.com/embed/${m[1]}" frameborder="0" allowfullscreen style="border-radius:var(--radius)"></iframe>`;
+  else { el.innerHTML = `<i class="ti ti-external-link" style="font-size:28px"></i><p style="font-size:12px">Atidaryti nuorodą</p>`; el.style.cursor = 'pointer'; el.onclick = () => window.open(url, '_blank'); }
+}
+async function updateVideo() {
+  const url = document.getElementById('videoInp').value;
+  const c = cocktails.find(x => x.id == currentId); if (!c) return;
+  c.videoUrl = url; await persist(c); renderVideo(url);
+}
+function renderStars(r) {
+  document.getElementById('starsR').innerHTML = [1,2,3,4,5].map(n => `<span class="s-big" onclick="setR(${n})" style="color:${n<=Math.round(r)?'var(--star)':'var(--border2)'}">★</span>`).join('');
+}
+function setR(n) { curRating = n; renderStars(n); document.getElementById('bigR').textContent = n.toFixed(1); }
+function renderTasteChips(active) {
+  document.getElementById('tasteRow').innerHTML = TASTES.map(t => `<button class="t-chip ${active.includes(t) ? 'on' : ''}" onclick="this.classList.toggle('on')">${t}</button>`).join('');
+}
+async function saveReview() {
+  const c = cocktails.find(x => x.id == currentId); if (!c) return;
+  c.rating = curRating || c.rating;
+  c.tasteTags = [...document.querySelectorAll('#tasteRow .t-chip.on')].map(e => e.textContent);
+  c.notes = document.getElementById('notesTA').value; c.reviewed = true;
+  await persist(c);
+  document.getElementById('bigR').textContent = c.rating.toFixed(1);
+  document.getElementById('rCount').textContent = 'Vertinimas';
+  document.getElementById('dStars').innerHTML = `${stars(c.rating,14)}<span style="color:rgba(255,255,255,.85);font-size:12px;margin-left:4px">${c.rating.toFixed(1)}</span>`;
+  renderList(cocktails); showToast('✓ Išsaugota');
+}
+
+// ── WIZARD ──
+function allIngs() { const a = []; Object.entries(ING_DB).forEach(([cat, items]) => items.forEach(i => a.push({ name: i, cat }))); return a; }
+function buildWizCats() {
+  document.getElementById('ingCats').innerHTML = ALL_CATS.map(c => `<span class="i-cat ${c === wizCat ? 'on' : ''}" onclick="setWizCat('${c}')">${c}</span>`).join('');
+}
+function setWizCat(cat) { wizCat = cat; buildWizCats(); renderIngChips(); }
+function renderIngChips() {
+  const q = (document.getElementById('ingS').value || '').toLowerCase();
+  const f = allIngs().filter(i => (wizCat === 'Visi' || i.cat === wizCat) && (!q || i.name.toLowerCase().includes(q)));
+  document.getElementById('ingGrid').innerHTML = f.map(i => `<span class="i-chip ${wizIngs.some(s=>s.name===i.name)?'on':''}" onclick="toggleIng('${i.name.replace(/'/g,"\\'")}')">${i.name}</span>`).join('');
+}
+function toggleIng(name) { const idx = wizIngs.findIndex(s=>s.name===name); idx>=0?wizIngs.splice(idx,1):wizIngs.push({name,amount:''}); renderIngChips(); renderSelIng(); }
+function addCustom() { const inp=document.getElementById('ingCustom'); const v=inp.value.trim(); if(!v)return; if(!wizIngs.some(s=>s.name===v))wizIngs.push({name:v,amount:''}); inp.value=''; renderIngChips(); renderSelIng(); }
+function renderSelIng() {
+  const el=document.getElementById('selIng');
+  if(!wizIngs.length){el.innerHTML='<p style="font-size:13px;color:var(--text2)">Dar nepasirinkta</p>';return;}
+  el.innerHTML=wizIngs.map((ing,i)=>`<div class="sel-ing-row"><span class="sel-ing-name">${ing.name}</span><input class="sel-ing-amt" type="text" placeholder="Kiekis" value="${ing.amount}" oninput="wizIngs[${i}].amount=this.value"><button class="sel-ing-rm" onclick="rmIng(${i})"><i class="ti ti-x"></i></button></div>`).join('');
+}
+function rmIng(i){wizIngs.splice(i,1);renderIngChips();renderSelIng();}
+function resetSteps(){document.getElementById('stepWiz').innerHTML='';addStep();addStep();}
+function addStep(){
+  const n=document.getElementById('stepWiz').children.length+1; const d=document.createElement('div'); d.className='step-row-w';
+  d.innerHTML=`<div class="step-badge">${n}</div><div class="step-inputs-w"><input class="wiz-inp" type="text" placeholder="Žingsnis..."><input class="wiz-inp" type="text" placeholder="Patarimas (nebūtina)" style="margin-top:4px"></div><button style="background:none;border:none;cursor:pointer;color:var(--text2);font-size:16px;display:flex;padding:2px;flex-shrink:0" onclick="rmStep(this)"><i class="ti ti-x"></i></button>`;
+  document.getElementById('stepWiz').appendChild(d);
+}
+function rmStep(btn){btn.parentElement.remove();[...document.getElementById('stepWiz').children].forEach((r,i)=>{r.querySelector('.step-badge').textContent=i+1;});}
+function prevPhoto(){
+  wizPhoto=document.getElementById('wPhoto').value.trim();
+  const img=document.getElementById('wPhPrev'),ph=document.getElementById('wPhPh');
+  if(wizPhoto){img.src=wizPhoto;img.classList.add('vis');ph.style.display='none';img.onerror=()=>{img.classList.remove('vis');ph.style.display='flex';};}
+  else{img.classList.remove('vis');ph.style.display='flex';}
+}
+function renderWizTastes(){document.getElementById('wTastes').innerHTML=TASTES.map(t=>`<button class="t-chip ${wizTastes.includes(t)?'on':''}" onclick="twTaste(this,'${t}')">${t}</button>`).join('');}
+function twTaste(el,t){el.classList.toggle('on');wizTastes=wizTastes.includes(t)?wizTastes.filter(x=>x!==t):[...wizTastes,t];}
+function renderWizStars(){document.getElementById('wStars').innerHTML=[1,2,3,4,5].map(n=>`<span class="s-big" onclick="setWizR(${n})" style="color:${n<=wizRating?'var(--star)':'var(--border2)'}">★</span>`).join('');}
+function setWizR(n){wizRating=n;renderWizStars();}
+
+function openWiz(id) {
+  editingId=id; wizStep=1; wizRating=0; wizTastes=[]; wizPhoto=''; wizIngs=[]; wizCat='Visi';
+  if(id){
+    const c=cocktails.find(x=>x.id==id);
+    document.getElementById('wName').value=c.name;
+    [...document.getElementById('wCat').options].forEach(o=>{o.selected=o.value===c.category;});
+    [...document.getElementById('wGlass').options].forEach(o=>{o.selected=o.value===c.glass;});
+    wizPhoto=c.photoUrl||''; document.getElementById('wPhoto').value=wizPhoto;
+    wizIngs=(c.ingredients||[]).map(i=>({name:i.name,amount:i.amount}));
+    wizRating=c.rating||0; wizTastes=[...(c.tasteTags||[])];
+    document.getElementById('wVideo').value=c.videoUrl||'';
+    document.getElementById('stepWiz').innerHTML='';
+    (c.steps||[]).forEach(()=>addStep());
+    const rs=document.getElementById('stepWiz').children;
+    (c.steps||[]).forEach((s,i)=>{const ins=rs[i].querySelectorAll('input');ins[0].value=s.text||'';ins[1].value=s.tip||'';});
+    if(!(c.steps||[]).length)resetSteps();
+    const ph=document.getElementById('wPhPh'),prev=document.getElementById('wPhPrev');
+    if(wizPhoto){prev.src=wizPhoto;prev.classList.add('vis');ph.style.display='none';}else{prev.classList.remove('vis');ph.style.display='flex';}
+  }else{
+    document.getElementById('wName').value=''; document.getElementById('wVideo').value=''; document.getElementById('wPhoto').value='';
+    document.getElementById('wPhPrev').classList.remove('vis'); document.getElementById('wPhPh').style.display='flex';
+    resetSteps();
+  }
+  buildWizCats(); renderIngChips(); renderSelIng(); renderWizTastes(); renderWizStars();
+  document.getElementById('ingS').value=''; updateWizUI(); document.getElementById('wizOverlay').classList.add('open');
+}
+function closeWiz(){document.getElementById('wizOverlay').classList.remove('open');}
+function updateWizUI(){
+  const titles=['Pagrindinė informacija','Ingredientai','Gaminimo žingsniai','Vaizdo klipas ir skonis'];
+  document.getElementById('wizTitle').textContent=editingId?`Redaguoti: ${titles[wizStep-1]}`:titles[wizStep-1];
+  document.getElementById('prog').innerHTML=[1,2,3,4].map(i=>`<div class="prog-dot ${i<=wizStep?'done':''}"></div>`).join('');
+  document.querySelectorAll('.wiz-pane').forEach((p,i)=>p.classList.toggle('active',i+1===wizStep));
+  document.getElementById('wBackBtn').style.display=wizStep>1?'block':'none';
+  document.getElementById('wNextBtn').textContent=wizStep===4?'Išsaugoti ✓':'Toliau →';
+}
+function wBack(){if(wizStep>1){wizStep--;updateWizUI();}}
+async function wNext(){
+  if(wizStep===1&&!document.getElementById('wName').value.trim()){document.getElementById('wName').focus();return;}
+  if(wizStep<4){wizStep++;updateWizUI();return;}
+  const stps=[...document.getElementById('stepWiz').children].map(r=>{const ins=r.querySelectorAll('input');return{text:ins[0].value.trim(),tip:ins[1].value.trim()};}).filter(s=>s.text);
+  const data={
+    name:document.getElementById('wName').value.trim(),
+    photoUrl:wizPhoto,
+    category:document.getElementById('wCat').value,
+    glass:document.getElementById('wGlass').value,
+    rating:wizRating||0,reviewed:wizRating>0,
+    tags:[document.getElementById('wCat').value],
+    ingredients:wizIngs.map(i=>({name:i.name,amount:i.amount||'–'})),
+    steps:stps,
+    videoUrl:document.getElementById('wVideo').value.trim(),
+    tasteTags:wizTastes,notes:'',
+  };
+  if(editingId){
+    const idx=cocktails.findIndex(x=>x.id==editingId);
+    if(idx>=0){data.id=editingId;data.notes=cocktails[idx].notes||'';if(!wizRating&&cocktails[idx].reviewed){data.rating=cocktails[idx].rating;data.reviewed=true;}cocktails[idx]=data;}
+    await persist(data); closeWiz(); renderList(cocktails); openDetail(editingId); showToast(`✓ ${data.name} atnaujintas!`);
+  }else{
+    data.id='c'+Date.now(); cocktails.unshift(data);
+    await persist(data); closeWiz(); renderList(cocktails); showToast(`✓ ${data.name} pridėtas!`);
+  }
+}
+
+// Service worker
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>
